@@ -203,10 +203,16 @@ class ScalableLSHIndex:
         return scored[:top_k]
 
     def brute_force_search(self, query: list[float], top_k: int = 10) -> list[tuple[int, float, int]]:
-        """Full brute force for ground truth."""
+        """Full brute force for ground truth (numpy batch)."""
         q = np.array(query, dtype=np.float64)
         self._ensure_np_array()
-        sims = np.array([float(cosine_similarity(list(query), list(v))) for v in self.vectors])
+        q_norm = np.linalg.norm(q)
+        if q_norm == 0:
+            return []
+        q_unit = q / q_norm
+        norms = np.linalg.norm(self._np_vectors, axis=1)
+        norms[norms == 0] = 1.0
+        sims = self._np_vectors @ q_unit / norms
         top_idx = np.argsort(-sims)[:top_k]
         return [(self.neuron_ids[i], float(sims[i]), 0) for i in top_idx]
 
