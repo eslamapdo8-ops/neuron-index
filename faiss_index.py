@@ -119,36 +119,18 @@ class FAISSIndex:
     # ── Add neuron ──────────────────────────────
     def add_neuron(self, vector: list[float], neuron_id: int | None = None,
                    context: bytes = b"", links: list[int] | None = None) -> int:
-        """Add a single neuron (lazy training — FAISS trains on first search)."""
+        """Add a single neuron (lazy training)."""
         if neuron_id is None:
             neuron_id = self.total
 
         vec = np.array(vector, dtype=np.float32)
-        # Normalize for inner product (cosine)
-        norm = np.linalg.norm(vec)
-        if norm > 0:
-            vec = vec / norm
 
-        # Store
+        # Store locally (no FAISS until training)
         pos = len(self.vectors)
         self.neuron_ids.append(neuron_id)
         self.vectors.append(vec)
         self._nid_to_pos[neuron_id] = pos
         self._pos_to_nid[pos] = neuron_id
-
-        # FAISS: add to raw index first, train on first search
-        faiss_id = self._next_faiss_id
-        self._next_faiss_id += 1
-        self._faiss_to_nid[faiss_id] = neuron_id
-        self._nid_to_faiss[neuron_id] = faiss_id
-
-        if self._built:
-            self.index.add_with_ids(vec.reshape(1, -1), np.array([faiss_id]))
-        else:
-            # Store temporarily; train on first search
-            if not hasattr(self, '_pending_vectors'):
-                self._pending_vectors = []
-            self._pending_vectors.append(vec.copy())
 
         # Cell state
         if neuron_id not in self.cells:
@@ -162,19 +144,23 @@ class FAISSIndex:
         return neuron_id
 
     def _finalize_training(self):
-        """Train FAISS and add all pending vectors."""
+        """Train FAISS and add all stored vectors."""
         if self._built:
             return
         if self.total == 0:
             return
 
         all_vecs = np.array(self.vectors, dtype=np.float32)
-        # Normalize all
+        # Normalize all for inner product
         norms = np.linalg.norm(all_vecs, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         all_vecs = all_vecs / norms
 
-        self._np_vectors = all_vecs
+        self._np_vectors = np.array(self.vectors, dtype=np.float64)
+        # Normalize for cosine comparisons
+        norms64 = np.linalg.norm(self._np_vectors, axis=1, keepdims=True)
+        norms64[norms64 == 0] = 1.0
+        self._np_vectors = self._np_vectors / norms64
 
         print(f"  Training FAISS IVF (nlist={self.nlist}) on {self.total:,} vectors...")
         t0 = time.perf_counter()
@@ -182,12 +168,15 @@ class FAISSIndex:
         train_time = time.perf_counter() - t0
         print(f"  Training: {train_time:.2f}s")
 
-        # Add with IDs
-        ids = np.array([self._nid_to_faiss[nid] for nid in self.neuron_ids], dtype=np.int64)
-        self.index.add_with_ids(all_vecs, ids)
+        # Generate FAISS IDs and add
+        faiss_ids = np.arange(self.total, dtype=np.int64)
+        self._next_faiss_id = self.total
+        self._faiss_to_nid = {int(fid): nid for fid, nid in zip(faiss_ids, self.neuron_ids)}
+        self._nid_to_faiss = {nid: int(fid) for nid, fid in zip(self.neuron_ids, faiss_ids)}
+
+        self.index.add_with_ids(all_vecs, faiss_ids)
         self._built = True
-        if hasattr(self, '_pending_vectors'):
-            del self._pending_vectors
+        print(f"  FAISS index built: {self.index.ntotal:,} vectors")
 
     # ── Stage 1: FAISS search ──────────────────
     def faiss_search(self, query: list[float], top_k: int = 10) -> list[int]:
