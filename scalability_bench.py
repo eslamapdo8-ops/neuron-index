@@ -16,6 +16,16 @@ Usage:
 """
 
 import sys, os, math, random, time, shutil, gc, struct
+
+# ── Log setup: tee stdout to file ──
+LOG_FILE = os.path.expanduser("~/scalability_bench.log")
+_log_file = open(LOG_FILE, "w", buffering=1)
+def log_print(*args, **kwargs):
+    print(*args, **kwargs)
+    print(*args, file=_log_file, **kwargs)
+    _log_file.flush()
+print = log_print  # monkey-patch print
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
@@ -551,3 +561,5 @@ if __name__ == "__main__":
         write_report(results, estimate)
     else:
         print("No results to report")
+    
+    _log_file.close()
