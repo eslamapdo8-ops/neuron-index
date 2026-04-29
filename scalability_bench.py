@@ -476,7 +476,7 @@ def write_report(results: list[dict], estimate: dict | None):
     lines.append("")
     lines.append("## Precision Trend")
     lines.append("")
-    lines.append("```
+    lines.append("```")
     lines.append("P@10")
     lines.append("100% |  ●")
     lines.append(" 80% |       ●  ●")
