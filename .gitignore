@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+debug_*.py
+demo_results.txt
+run_demo_codespace.py
+neuron_index.py
+neuron-data/
