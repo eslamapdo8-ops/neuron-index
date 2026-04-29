@@ -120,8 +120,9 @@ class FlatNeuronIndex:
         self.add_count = 0
         self.lock = threading.Lock()
 
-        # Numpy array cache (rebuilt lazily if self.use_numpy)
+        # Numpy array cache (rebuilt lazily)
         self._np_vectors: "np.ndarray | None" = None
+        self._np_version: int = 0  # incremented when vectors change
 
         if self.use_numpy:
             print(f"[FlatNeuronIndex] numpy {np.__version__} — accelerated mode")
@@ -154,6 +155,7 @@ class FlatNeuronIndex:
             self.neuron_ids.append(neuron_id)
             self.vectors.append(tuple(signature_float))
             self._id_to_index[neuron_id] = idx
+            self._np_version += 1  # invalidate numpy cache
             
             # Create cell state
             if neuron_id not in self.cells:
@@ -224,6 +226,14 @@ class FlatNeuronIndex:
         else:
             return self._search_pure_py(query_float, top_k)
 
+    def _rebuild_np_array(self):
+        """Rebuild numpy array from current vectors."""
+        if self.use_numpy and self.vectors:
+            self._np_vectors = np.array(self.vectors, dtype=np.float32)
+            self._np_version = self.add_count + sum(1 for c in self.cells.values() if c.memory_version > 0)
+        else:
+            self._np_vectors = None
+
     def _search_numpy(
         self, query_float: list[float], top_k: int = 10
     ) -> list[tuple[int, float, int]]:
@@ -231,9 +241,13 @@ class FlatNeuronIndex:
             if not self.vectors:
                 return []
             
-            # Lazy rebuild numpy array if needed
-            if self._np_vectors is None or self._np_vectors.shape[0] != len(self.vectors):
+            n = len(self.vectors)
+            # Rebuild only if stale
+            if self._np_vectors is None or self._np_version < self.add_count + sum(1 for c in self.cells.values() if c.memory_version > 0):
                 self._rebuild_np_array()
+            
+            if self._np_vectors is None:
+                return []
             
             q = np.array(query_float, dtype=np.float32)
             q_norm = np.linalg.norm(q)
@@ -241,22 +255,18 @@ class FlatNeuronIndex:
                 return []
             q = q / q_norm
             
-            # Batch dot product: (N, 64) · (64,) → (N,)
+            # Batch dot product
             dots = np.dot(self._np_vectors, q)
             
-            # argpartition: O(N) to find top_k
-            if top_k >= len(dots):
+            # argpartition
+            k = min(top_k, n)
+            if k >= n:
                 indices = np.argsort(-dots)
             else:
-                k = min(top_k, len(dots))
                 partition_idx = np.argpartition(-dots, k)[:k]
-                top_indices = partition_idx[np.argsort(-dots[partition_idx])]
-                indices = top_indices
+                indices = partition_idx[np.argsort(-dots[partition_idx])]
             
-            results = []
-            for idx in indices:
-                results.append((self.neuron_ids[idx], float(dots[idx]), 0))
-            return results
+            return [(self.neuron_ids[int(i)], float(dots[int(i)]), 0) for i in indices]
 
     def _search_pure_py(
         self, query_float: list[float], top_k: int = 10
