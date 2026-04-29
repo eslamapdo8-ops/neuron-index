@@ -116,7 +116,7 @@ class FAISSIndex:
 
         os.makedirs(self.data_dir, exist_ok=True)
 
-    # ── Add neuron ──────────────────────────────
+    # ── Add neuron (single) ─────────────────────
     def add_neuron(self, vector: list[float], neuron_id: int | None = None,
                    context: bytes = b"", links: list[int] | None = None) -> int:
         """Add a single neuron (lazy training)."""
@@ -124,15 +124,12 @@ class FAISSIndex:
             neuron_id = self.total
 
         vec = np.array(vector, dtype=np.float32)
-
-        # Store locally (no FAISS until training)
         pos = len(self.vectors)
         self.neuron_ids.append(neuron_id)
         self.vectors.append(vec)
         self._nid_to_pos[neuron_id] = pos
         self._pos_to_nid[pos] = neuron_id
 
-        # Cell state
         if neuron_id not in self.cells:
             self.cells[neuron_id] = CellState(
                 neuron_id=neuron_id, signature=list(vector),
@@ -142,6 +139,32 @@ class FAISSIndex:
         self.total += 1
         self._np_version += 1
         return neuron_id
+
+    # ── Batch add — FAST ────────────────────────
+    def batch_add(self, vectors: np.ndarray, neuron_ids: list[int] | None = None):
+        """Fast batch add: append all vectors + cell states at once."""
+        n = vectors.shape[0]
+        if neuron_ids is None:
+            neuron_ids = list(range(self.total, self.total + n))
+
+        start_pos = len(self.vectors)
+
+        for i in range(n):
+            pos = start_pos + i
+            nid = neuron_ids[i]
+            vec = vectors[i]
+            self.neuron_ids.append(nid)
+            self.vectors.append(np.array(vec, dtype=np.float32))
+            self._nid_to_pos[nid] = pos
+            self._pos_to_nid[pos] = nid
+
+            if nid not in self.cells:
+                self.cells[nid] = CellState(
+                    neuron_id=nid, signature=list(vec),
+                )
+
+        self.total += n
+        self._np_version += 1
 
     def _finalize_training(self):
         """Train FAISS and add all stored vectors."""
