@@ -230,7 +230,7 @@ class FlatNeuronIndex:
         """Rebuild numpy array from current vectors."""
         if self.use_numpy and self.vectors:
             self._np_vectors = np.array(self.vectors, dtype=np.float32)
-            self._np_version = self.add_count + sum(1 for c in self.cells.values() if c.memory_version > 0)
+            self._np_version = self.add_count  # only add_count invalidates
         else:
             self._np_vectors = None
 
@@ -242,8 +242,8 @@ class FlatNeuronIndex:
                 return []
             
             n = len(self.vectors)
-            # Rebuild only if stale
-            if self._np_vectors is None or self._np_version < self.add_count + sum(1 for c in self.cells.values() if c.memory_version > 0):
+            # Rebuild if stale: only when add_count changed (new neurons added)
+            if self._np_vectors is None or self._np_version < self.add_count:
                 self._rebuild_np_array()
             
             if self._np_vectors is None:
