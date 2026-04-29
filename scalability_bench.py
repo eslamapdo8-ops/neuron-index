@@ -182,25 +182,44 @@ class ScalableLSHIndex:
 
     def filter_by_relevance(self, candidate_ids: list[int], query: list[float],
                             threshold: float = 0.0, top_k: int = 10) -> list[tuple[int, float, int]]:
-        """Stage 2: cosine similarity, return top_k."""
+        """Stage 2: cosine similarity via numpy batch, return top_k."""
         if not candidate_ids:
             return []
-        q = np.array(query, dtype=np.float64)
         self._ensure_np_array()
 
-        candidate_mask = np.isin(np.arange(len(self.vectors)), 
-                                  [self.neuron_ids.index(nid) for nid in candidate_ids])
-        
-        # Manual scoring using indices
-        scored = []
-        for nid in candidate_ids:
-            idx = self.neuron_ids.index(nid)
-            sim = float(cosine_similarity(list(query), list(self.vectors[idx])))
-            if sim >= threshold:
-                scored.append((nid, sim, 0))
+        # Build index mapping neuron_id -> position
+        if not hasattr(self, '_id_to_pos'):
+            self._id_to_pos = {nid: i for i, nid in enumerate(self.neuron_ids)}
 
-        scored.sort(key=lambda x: -x[1])
-        return scored[:top_k]
+        # Get positions
+        positions = []
+        for nid in candidate_ids:
+            pos = self._id_to_pos.get(nid)
+            if pos is not None:
+                positions.append(pos)
+
+        if not positions:
+            return []
+
+        # Batch cosine similarity
+        q = np.array(query, dtype=np.float64)
+        q_norm = np.linalg.norm(q)
+        if q_norm == 0:
+            return []
+        q_unit = q / q_norm
+        
+        cand_vecs = self._np_vectors[positions]
+        norms = np.linalg.norm(cand_vecs, axis=1)
+        norms[norms == 0] = 1.0
+        sims = cand_vecs @ q_unit / norms
+
+        # Sort and apply threshold
+        order = np.argsort(-sims)
+        result = []
+        for idx in order:
+            if sims[idx] >= threshold and len(result) < top_k:
+                result.append((self.neuron_ids[positions[idx]], float(sims[idx]), 0))
+        return result
 
     def brute_force_search(self, query: list[float], top_k: int = 10) -> list[tuple[int, float, int]]:
         """Full brute force for ground truth (numpy batch)."""
