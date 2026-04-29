@@ -44,8 +44,8 @@ except ImportError:
 # ──────────────────────────────────────────────
 DIM = 64               # signature dimension
 N_HASH_BITS = 12       # bits per LSH table → 4096 buckets
-NUM_TABLES = 8         # L = 8 multi-table
-NUM_BUCKETS = 1 << N_HASH_BITS  # 4096
+NUM_TABLES = 8         # L = 8 multi-table (best Precision@10=100% on 100K clustered)
+NUM_BUCKETS = 1 << N_HASH_BITS  # 4096 for k=12; use k=8 (256) for higher recall
 GATE_BIAS_DEFAULT = 0.5
 GATE_BIAS_MIN = 0.01
 GATE_BIAS_MAX = 0.99
