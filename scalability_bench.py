@@ -315,8 +315,8 @@ def run_benchmark(N: int, n_queries: int = 20, L: int = 8, k: int = 8):
         all_active.append(len(active))
         all_latencies.append(lat)
 
-        # Precision@10 (brute force on first 5 queries only — expensive)
-        if q_idx < 5:
+        # Precision@10 (brute force on first 2 queries only — expensive on 1M+)
+        if q_idx < 2:
             bf = idx.brute_force_search(qv, top_k=10)
             bf_set = set(n for n, _, _ in bf)
             lsh_set = set(n for n, _, _ in active)
