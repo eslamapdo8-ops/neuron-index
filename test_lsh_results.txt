@@ -1,0 +1,28 @@
+LSH Multi-Table Benchmark — Phase 1 Results
+============================================
+
+Date: 2026-04-29
+
+Configuration:
+  L (tables):     8
+  k (bits):       8
+  Buckets/table:  256
+  Dimensions:     64
+
+Benchmark (100K neurons, 100 queries):
+  Build time:     95.8s
+  Avg query:      234ms
+  Avg candidates: 29,821
+  Precision@10:   100%
+  Recall@50:      100%
+
+E2E Demo (100K neurons, 10 cycles):
+  Build time:     62.59s
+  Avg query:      101ms
+  Avg candidates: 14,970
+  Active neurons: 10 per cycle (all above threshold)
+  Write ops:      100
+  Integrity:      PASS (cells == total_neurons, no data loss)
+
+Status: ✅ Phase 1 Complete — LSH with Random Projections meets >90% Precision
+Next Phase: 1M → 10M → 100M scalability stress test with FAISS IVF
